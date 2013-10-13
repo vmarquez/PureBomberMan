@@ -1,0 +1,23 @@
+# Compiled source #
+###################*
+*.class
+*.log.txt
+*.classpath
+*.scala_dependencies
+.project
+.cache
+.history
+.DS_STORE
+heap.bin
+
+# FOLDERS
+############
+bin/
+log/
+target/
+project/boot/
+project/plugins/project/
+.settings/
+.idea/
+.idea_modules/
+
