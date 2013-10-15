@@ -43,7 +43,6 @@ object Data {
   val positionPlayerLens = (k: String) => (playerLens(k).andThen(positionLens))
 
   val markBomb = (i: Int, newb: Boolean) => StateT[Id, GameBoard, Unit](b => (b.copy(bombs = b.bombs.updated(i, newb)), ()))
-
 }
 
 case class VLens[A, B](set: (A, B) => A, get: A => B) {
@@ -53,7 +52,7 @@ case class VLens[A, B](set: (A, B) => A, get: A => B) {
     }, (a) => otherLens.get(get(a)))
   }
 
-  def mods(b: B) = StateT[Id, A, B](a => {
+  def mods(b: B) = State[A, B](a => {
     (set(a, b), b)
   })
 
