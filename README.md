@@ -139,7 +139,7 @@ We could code the 'move' action handler to look like the following
 
 ```scala
     case m: Move=> world = positionPlayerLens(m.name).set(world, m.position)
-
+```
 Which is fairly similar to how we're actually doing it, excep there's a problem.  Our game is concurrent. What happens if the world variable representing our Game State was
 updated by another thread between reading it and modifing it?  We may have just wiped out someone else's changes, or vice versa.  Let's eliminate our global 'var' by replacing
 it with the indominatable java.util.atomic.AtomicReference.  
