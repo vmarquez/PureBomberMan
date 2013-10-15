@@ -18,15 +18,14 @@ A note about purity:
 First things first, we should define our 'entities', the data we'll be working with. 
 
 ```scala
-    case class PlayerStats(bombsThrown: Int, wounds: Int, playersHit: Int)
-    
-    case class Player(name: String, callback: String, position: Int, stats: PlayerStats)
-    
-    //there are better datastructures for what we are doing here, 
-    //but now this is conceptually pretty simple
+case class PlayerStats(bombsThrown: Int, wounds: Int, playersHit: Int)
 
-    case class GameBoard(players: Map[String, Player], bombs: Map[Int, Boolean])
+case class Player(name: String, callback: String, position: Int, stats: PlayerStats)
 
+//there are better datastructures for what we are doing here, 
+//but now this is conceptually pretty simple
+
+case class GameBoard(players: Map[String, Player], bombs: Map[Int, Boolean])
 ```
 
 Nothing surprising here, we have a player, a group of player statistics, and a way to represent all of the active players along with
@@ -37,60 +36,55 @@ update the state of the world.
 
 Scala gives us free 'copy' methods for each case class, but we'd end up needing to do a lot of this
 ```scala
-    gameBoard.copy(players = gameBoard.players.updated("playername", 
-        gameboard.players(""playername").copy(stats = player.playerStats.copy(wounds = player.playerStats.wounds + 1))))
+gameBoard.copy(players = gameBoard.players.updated("playername", 
+    gameboard.players(""playername").copy(stats = player.playerStats.copy(wounds = player.playerStats.wounds + 1))))
 ```
 
 Which is soul crushing to write.  Instead we'll use something called a Lens.  These are in ScalaZ (and there are a few other libraries), but 
 for simplicities' sake I'll actually write my own implementation.  First, a lens is simply a datastructure consisting of a "getter" and "setter".
 
 ```scala
-    case class VLens[A, B](set: (A, B) => A, get: A => B)
+case class VLens[A, B](set: (A, B) => A, get: A => B)
 ```
 
 So, now we need to instantiate lens instances for our PlayerStats entity.  Our bomb lens takes a PlayerStats instance, an Int, and returns a new PlayerStats
 instance.  Seems like a lot of boilerplate for no reason... 
-
-    val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
-    val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
-    val woundLens = VLens.lensu[PlayerStats, Int]((stats, nw) => stats.copy(wounds = nw), _.wounds)
-    val hitLens = VLens.lensu[PlayerStats, Int]((stats, nh) => stats.copy(playersHit = nh), _.playersHit)
-
+```scala
+val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
+val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
+val woundLens = VLens.lensu[PlayerStats, Int]((stats, nw) => stats.copy(wounds = nw), _.wounds)
+val hitLens = VLens.lensu[PlayerStats, Int]((stats, nh) => stats.copy(playersHit = nh), _.playersHit)
+```
 We also need a way to set the PlayerStats entity *on* the Player entity, so 
-    
-    val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(stats = ns), _.stats)
-
+```scala    
+val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(stats = ns), _.stats)
+```
 So how do we combine them? Ok I lied, VLens actually looks like this:
-
-    case class VLens[A, B](set: (A, B) => A, get: A => B) {
-        def andThen[C](otherLens: VLens[B, C]): VLens[A, C] = {
-            VLens[A, C]((a, c) => {
-                set(a, otherLens.set(get(a), c))
-            }, (a) => otherLens.get(get(a)))
-        }
+```scala
+case class VLens[A, B](set: (A, B) => A, get: A => B) {
+    def andThen[C](otherLens: VLens[B, C]): VLens[A, C] = {
+        VLens[A, C]((a, c) => {
+            set(a, otherLens.set(get(a), c))
+        }, (a) => otherLens.get(get(a)))
     }
+}
 
 Now we can compose our two lenses to create a Lens so we can pass in a A (Player, in our case), and a C (an Int, for bombLens as an example), and return a new player. 
 
 ```scala
-    val woundStatsLens = statsLens.andThen(woundLens)
-    val hitStatsLens = statsLens.andThen(hitLens)
-    val bombStatsLens = statsLens.andThen(bombLens)
+val woundStatsLens = statsLens.andThen(woundLens)
+val hitStatsLens = statsLens.andThen(hitLens)
+val bombStatsLens = statsLens.andThen(bombLens)
 ```
 
 Ok, we're making progress, but now how do we set a player (and subsequently, and of its relevant lenses) on a GameBoard? There are a few suggested ways, but I think it's
 fine to have our lens be a function that takes a specific player.  Then we can continue composing our lenses
 
-
 ```scala
-    val playerLens = (k: String) => VLens.lensu[GameBoard, Player]((gb, pl) => gb.copy(players = gb.players.updated(k, pl)), _.players(k))
-    val bombStatsPlayerLens = (k: String) => (playerLens(k).andThen(bombStatsLens))
+val playerLens = (k: String) => VLens.lensu[GameBoard, Player]((gb, pl) => gb.copy(players = gb.players.updated(k, pl)), _.players(k))
+val bombStatsPlayerLens = (k: String) => (playerLens(k).andThen(bombStatsLens))
 ```
 etc.
-
-
-
-
 
 ##Actions
 
