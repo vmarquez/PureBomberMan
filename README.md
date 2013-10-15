@@ -1,7 +1,7 @@
 #Puregame
 
 
-##A pure, functional, concurrent implementaiton of the game "Bomber Man"
+##A pure, functional, concurrent implementation of the game "Bomber Man"
 
 When I first started studying and dabbling in functional programming, I quickly understood how pure functions could help reusibility, reduce complexity, and ovearll
 be more pleasant to work with.  However, I did not immediately see how you could utilize functional progarmming in a state heavy, concurrent environment, and this
@@ -13,7 +13,7 @@ I have no formal computer science training, no math background, and I don't actu
 I'm going to go step by step through a very naieve, conceptually simle implementation of bomber man in scala, so to follow you should have some familiarity with scala
 and understand more or less what for comprehension is doing. 
 
-A note about purity: 
+So, what is a "pure" functional 
 
 First things first, we should define our 'entities', the data we'll be working with. 
 
