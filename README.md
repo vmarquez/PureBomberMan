@@ -4,16 +4,16 @@
 ##A pure, functional, concurrent implementation of the game "Bomber Man"
 
 When I first started studying and dabbling in functional programming, I quickly understood how pure functions could help reusibility, reduce complexity, and ovearll
-be more pleasant to work with.  However, I did not immediately see how you could utilize functional progarmming in a state heavy, concurrent environment, and this
-lack of knowledge seems to have turned into misinformation on various forums and message boards.  In an effort to answer the 'how' that a few friends have asked, I'd 
-like to show how not only is it doable, it's incredibly simple and elegant using even some of the most basic functional concepts.  This is just one of many different
+be more pleasant to work with.  However, I did not immediately see how you could utilize functional progarmming in a state heavy, concurrent environment, and from
+what I've read on  various forums, message boards, and twitter, this lack of knowledge seems somewhat widespread.  In an effort to answer the 'how' that a few friends have asked, I'd 
+like to show how not only is it doable, it's quite simple and elegant using just a few of core functional concepts I've been learning.  This is just one of many different
 ways to write a concurrent, pure, functional game.   Before I scare any of you off, I'd like to say that until recently I've only programmed in imperative languages,
 I have no formal computer science training, no math background, and I don't actually know category theory.  
 
 I'm going to go step by step through a very naieve, conceptually simle implementation of bomber man in scala, so to follow you should have some familiarity with scala
 and understand more or less what for comprehension is doing. 
 
-So, what is a "pure" functional 
+So, what is a "pure" functional program?  I'll define it to mean a program containing only Referentially Transparent funcions.  
 
 First things first, we should define our 'entities', the data we'll be working with. 
 
@@ -47,8 +47,8 @@ for simplicities' sake I'll actually write my own implementation.  First, a lens
 case class VLens[A, B](set: (A, B) => A, get: A => B)
 ```
 
-So, now we need to instantiate lens instances for our PlayerStats entity.  Our bomb lens takes a PlayerStats instance, an Int, and returns a new PlayerStats
-instance.  Seems like a lot of boilerplate for no reason... 
+And we'll need to create instances for each field we want to update in our PlayerStats entity.  Our bomb lens takes a PlayerStats instance, an Int, and returns a new PlayerStats
+instance.   
 ```scala
 val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
 val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
@@ -61,13 +61,14 @@ val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(sta
 ```
 So how do we combine them? Ok I lied, VLens actually looks like this:
 ```scala
-case class VLens[A, B](set: (A, B) => A, get: A => B) {
-    def andThen[C](otherLens: VLens[B, C]): VLens[A, C] = {
-        VLens[A, C]((a, c) => {
-            set(a, otherLens.set(get(a), c))
-        }, (a) => otherLens.get(get(a)))
+case class VLens[a, b](set: (a, b) => a, get: a => b) {
+    def andthen[c](otherlens: VLens[b, c]): VLens[a, c] = {
+        VLens[a, c]((a, c) => {
+            set(a, otherlens.set(get(a), c))
+        }, (a) => otherlens.get(get(a)))
     }
 }
+```
 
 Now we can compose our two lenses to create a Lens so we can pass in a A (Player, in our case), and a C (an Int, for bombLens as an example), and return a new player. 
 
@@ -198,12 +199,23 @@ are plenty of ways to compsose functions or actions, but State has the additiona
 So, again, there were more omssisions regarding my Lens implementation. There's one more method (and an alias) 
 
 ```scala
+case class VLens[a, b](set: (a, b) => a, get: a => b) {
+
   def mods(b: B) = State[A, B](a => {
     (set(a, b), b)
   })
 
   def :=(b: B) = mods(b)
+
+  def andthen[c](otherlens: vlens[b, c]): vlens[a, c] = {
+        vlens[a, c]((a, c) => {
+            set(a, otherlens.set(get(a), c))
+        }, (a) => otherlens.get(get(a)))
+  }
+}
+
 ```
+
 
 
 
