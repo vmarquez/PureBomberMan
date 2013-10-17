@@ -13,7 +13,13 @@ I have no formal computer science training, no math background, and I don't actu
 I'm going to go step by step through a very naieve, conceptually simle implementation of bomber man in scala, so to follow you should have some familiarity with scala
 and understand more or less what for comprehension is doing. 
 
-So, what is a "pure" functional program?  I'll define it to mean a program containing only Referentially Transparent funcions.  
+So, what is a "pure" functional program?  I'll define it to mean a program containing only [Referentially Transparent](http://en.wikipedia.org/wiki/Referential_transparency_(computer_science)) 
+functions. But why would we want that?  I'll take an exerpt from the cannonical [Functional Programming in Scala](http://www.manning.com/bjarnason/):
+>...enables a very simple and natural mode of reasoning about program evaluation, called the substitution model. When expressions are referentially transparent, we can imagine that
+>computation proceeds very much like we would solve an algebraic equation. We fully expand every part of an expression, replacing all variables with their referents, and then reduce 
+>it to its simplest form. At each step we replace a term with an equivalent one; we say that computation proceeds by substituting equals for equals. In other words, RT enables 
+>equational reasoning about programs.
+
 
 First things first, we should define our 'entities', the data we'll be working with. 
 
@@ -196,7 +202,7 @@ So, why is the State Monad so powerful?   Because it allows us to compose multip
 are plenty of ways to compsose functions or actions, but State has the additional benefit of the fact that you can get a State from a Lens.
 
 
-So, again, there were more omssisions regarding my Lens implementation. There's one more method (and an alias) 
+We'll add one more method to our Lens implemenation along wtih an alias.  ScalaZ and most Lens impelmenations will have a way to get a State monad. 
 
 ```scala
 case class VLens[a, b](set: (a, b) => a, get: a => b) {
@@ -216,6 +222,20 @@ case class VLens[a, b](set: (a, b) => a, get: a => b) {
 
 ```
 
+And because of scala's for comprehension, along wtih the fact that the State Monad has flatMap and Map, we now we can do:
+```scala
+    val s = 
+    for {
+        _ <- woundStatsPlayerLens("bob") mods +1
+        _ <- hitStatsPlayerLens("alice") mods +1
+    } yield ()
+
+    //s is scalaz.IndexedStateT[scalaz.Id.Id,puregame.Data.GameBoard,puregame.Data.GameBoard,Unit]
+    // which in our case is equivalent to State[GambeBoard, Unit]
+```
+
+Since we're using ScalaZ's State monad, we actually end up getting a more flexible and powerful version of the State Monad (IndexedStateT), but
+for our purposes it works exactly like the one I described.  
 
 
 

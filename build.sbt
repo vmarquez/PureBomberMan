@@ -18,4 +18,8 @@ libraryDependencies += "io.argonaut" %% "argonaut" % "6.0-RC3"
 
 libraryDependencies += "org.scalacheck" %% "scalacheck" % "1.10.1" % "test"
 
+libraryDependencies += "org.eclipse.jetty" % "jetty-servlet" % "8.1.5.v20120716"
+
+libraryDependencies += "org.eclipse.jetty" % "jetty-websocket" % "8.1.5.v20120716"
+
 scalariformSettings
