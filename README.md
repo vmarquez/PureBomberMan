@@ -14,7 +14,7 @@ I'm going to go step by step through a very naieve, conceptually simle implement
 and understand more or less what for comprehension is doing. 
 
 So, what is a "pure" functional program?  I'll define it to mean a program containing only [Referentially Transparent](http://en.wikipedia.org/wiki/Referential_transparency_(computer_science)) 
-functions. But why would we want that?  I'll take an exerpt from the cannonical [Functional Programming in Scala](http://www.manning.com/bjarnason/):
+functions. But why would we want that?  Instead of trying to explain myself, I'll use the cannonical [Functional Programming in Scala](http://www.manning.com/bjarnason/)'s excellent explanation:
 >...enables a very simple and natural mode of reasoning about program evaluation, called the substitution model. When expressions are referentially transparent, we can imagine that
 >computation proceeds very much like we would solve an algebraic equation. We fully expand every part of an expression, replacing all variables with their referents, and then reduce 
 >it to its simplest form. At each step we replace a term with an equivalent one; we say that computation proceeds by substituting equals for equals. In other words, RT enables 
@@ -65,7 +65,7 @@ We also need a way to set the PlayerStats entity *on* the Player entity, so
 ```scala    
 val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(stats = ns), _.stats)
 ```
-So how do we combine them? Ok I lied, VLens actually looks like this:
+So how do we combine them? We'll expand on our Lens implementation:
 ```scala
 case class VLens[a, b](set: (a, b) => a, get: a => b) {
     def andthen[c](otherlens: VLens[b, c]): VLens[a, c] = {
@@ -76,10 +76,10 @@ case class VLens[a, b](set: (a, b) => a, get: a => b) {
 }
 ```
 
-Now we can compose our two lenses to create a Lens so we can pass in a A (Player, in our case), and a C (an Int, for bombLens as an example), and return a new player. 
+Now we can compose our two lenses to create a Lens so we can pass in an A (Player, in our case), and a C (an Int, for bombLens as an example), and return a new player. 
 
 ```scala
-val woundStatsLens = statsLens.andThen(woundLens)
+val woundStatsLens = statsLens.andThen(woundLens) //Gives us a VLens[Player, Int]
 val hitStatsLens = statsLens.andThen(hitLens)
 val bombStatsLens = statsLens.andThen(bombLens)
 ```
