@@ -5,20 +5,18 @@
 
 When I first started studying and dabbling in functional programming, I quickly understood how pure functions could help reusibility, reduce complexity, and ovearll
 be more pleasant to work with.  However, I did not immediately see how you could utilize functional progarmming in a state heavy, concurrent environment, and from
-what I've read on  various forums, message boards, and twitter, this lack of knowledge seems somewhat widespread.  In an effort to answer the 'how' that a few friends have asked, I'd 
-like to show how not only is it doable, it's quite simple and elegant using just a few of core functional concepts I've been learning.  This is just one of many different
-ways to write a concurrent, pure, functional game.   Before I scare any of you off, I'd like to say that until recently I've only programmed in imperative languages,
-I have no formal computer science training, no math background, and I don't actually know category theory.  
-
-I'm going to go step by step through a very naieve, conceptually simle implementation of bomber man in scala, so to follow you should have some familiarity with scala
-and understand more or less what for comprehension is doing. 
+what I've read on  various forums, message boards, and twitter, this lack of knowledge seems somewhat widespread.  I thought it might be helpful as both an excersie
+and for others to show that a very simple concurrent multiplayer game could be made pure and maintain it's concurrency *and* simplicity.  To understand the code,
+I'm going to assume fluency in scala and understanding of for comprehension.  Some passing familiarity with the funcitonal concepts such as monads and/or functional IO 
+woud be helpful too, but I'll link to some of my favorite blog posts on the subject .  
 
 So, what is a "pure" functional program?  I'll define it to mean a program containing only [Referentially Transparent](http://en.wikipedia.org/wiki/Referential_transparency_(computer_science)) 
 functions. But why would we want that?  Instead of trying to explain myself, I'll use the cannonical [Functional Programming in Scala](http://www.manning.com/bjarnason/)'s excellent explanation:
->...enables a very simple and natural mode of reasoning about program evaluation, called the substitution model. When expressions are referentially transparent, we can imagine that
+>[Referential Transparency] enables a very simple and natural mode of reasoning about program evaluation, called the substitution model. When expressions are referentially transparent, we can imagine that
 >computation proceeds very much like we would solve an algebraic equation. We fully expand every part of an expression, replacing all variables with their referents, and then reduce 
 >it to its simplest form. At each step we replace a term with an equivalent one; we say that computation proceeds by substituting equals for equals. In other words, RT enables 
 >equational reasoning about programs.
+
 
 
 First things first, we should define our 'entities', the data we'll be working with. 
@@ -46,7 +44,7 @@ gameBoard.copy(players = gameBoard.players.updated("playername",
     gameboard.players(""playername").copy(stats = player.playerStats.copy(wounds = player.playerStats.wounds + 1))))
 ```
 
-Which is soul crushing to write.  Instead we'll use something called a Lens.  These are in ScalaZ (and there are a few other libraries), but 
+which is soul crushing to write.  Instead we'll use something called a Lens.  These are in ScalaZ (and there are a few other libraries), but 
 for simplicities' sake I'll actually write my own implementation.  First, a lens is simply a datastructure consisting of a "getter" and "setter".
 
 ```scala
@@ -84,18 +82,19 @@ val hitStatsLens = statsLens.andThen(hitLens)
 val bombStatsLens = statsLens.andThen(bombLens)
 ```
 
-Ok, we're making progress, but now how do we set a player (and subsequently, and of its relevant lenses) on a GameBoard? There are a few suggested ways, but I think it's
-fine to have our lens be a function that takes a specific player.  Then we can continue composing our lenses
+Ok, we're making progress, but now how do we set a player (and subsequently, and of its relevant lenses) on a GameBoard? There are a few different ways, but I think it's
+simple and effective enough to use a function that takes a 'player' and returns a Lens.  Then we can continue composing our lenses
 
 ```scala
+                  //k here is the player name, how we pull out the player from our GameBoard structure
 val playerLens = (k: String) => VLens.lensu[GameBoard, Player]((gb, pl) => gb.copy(players = gb.players.updated(k, pl)), _.players(k))
 val bombStatsPlayerLens = (k: String) => (playerLens(k).andThen(bombStatsLens))
 ```
-etc.
+and so on for the rest of the stats and player fields. 
 
 ##Actions
 
-Ok, now let's come up with various actions a player can take.
+Now that we have our entities, along with ways to 'modify' them in a functional way,  let's come up with various actions a player can take:
 
 ```scala
   sealed trait Action
@@ -107,8 +106,9 @@ Ok, now let's come up with various actions a player can take.
 ```
 
 
-Again, very straight forward stuff.  Reacting to actions such as Joining, Moving, and placing a bomb is just going to be calling into our lenses with the world state.
-We need a bit more logic to determine our 'blast radious' for when a bomb finally explodes, so I just came up with something quick.  
+Again, very straight forward stuff.  Reacting to actions such as Joining, Moving, and placing a bomb is just going to be calling into our lenses with the world state
+and the values passed in from the Action we received.  We need a bit more logic to determine our 'blast radious' for when a bomb finally explodes, so I just came up with something quick.  Note there is nothing 'special' 
+about our game logic here, other than the fact that these are side effect free functions. 
 
 ```scala
   def getHitPlayers(p: Int, board: GameBoard): List[Player] = {
@@ -176,8 +176,9 @@ pretty awful and most likely error prone.
 
 ##State Monad
 First, let's talk a bit about some magic called the State Monad.
-Instead of going on about mexican food, I'll just show the code, implore you to read it over a *lot*, (if you are unfamiliar), and
-then send you off to http://blog.tmorris.net/posts/the-state-monad-for-scala-users/index.html. This is also excellently covered in 
+Instead of going on about Mexican food or Astronauts, I'll just show the code, implore you to read it over a *lot*, (if you are unfamiliar), and
+then send you off to the [tutorial that helped me understand it](http://blog.tmorris.net/posts/the-state-monad-for-scala-users/index.html).  Coming from an imperative 
+background, I did have to spend some time thinking about it, and even typing out the example in the post to play with.  This is also excellently covered in 
 chapter six of Functional Programming in Scala.
 
 ```scala
@@ -222,7 +223,7 @@ case class VLens[a, b](set: (a, b) => a, get: a => b) {
 
 ```
 
-And because of scala's for comprehension, along wtih the fact that the State Monad has flatMap and Map, we now we can do:
+And because of scala's for comprehension, along wtih the fact that the State Monad has flatMap and Map, we now we can do nifty things like:
 ```scala
     val s = 
     for {
@@ -234,8 +235,41 @@ And because of scala's for comprehension, along wtih the fact that the State Mon
     // which in our case is equivalent to State[GambeBoard, Unit]
 ```
 
-Since we're using ScalaZ's State monad, we actually end up getting a more flexible and powerful version of the State Monad (IndexedStateT), but
-for our purposes it works exactly like the one I described.  
+Since in the code I'm using ScalaZ's State monad, we actually end up getting a more flexible and powerful version of the State Monad (IndexedStateT), but
+for our purposes it works exactly like the one I described.  Once we have a State Monad that describes how we're updating the GameBoard, we need a way to
+execute it.  We'll create a structure that holds an internal AtomicReference[A], and has a method called 'commit' which will handle 'running' a State[A,_] we 
+pass to it.  
+```scala
+sealed trait AtomicSTRef[A] {
+
+  def aref: AtomicReference[A]
+
+  def commit[B](s: State[A, B]): IO[(A, B)] = {
+    val m = aref.get()
+    val result = s(m)
+    if (!aref.compareAndSet(m, result._1))
+      commit(s)
+    else
+      IO { result }
+  }
+
+  def frozen = IO { aref.get }
+
+}
+```
+
+You may notice that commit returns IO, which isn't something I've explaiend yet...
+
+##IO
+
+IO is another crucial monad that lets us maintain Referntial Transparency while interacting with the outside world.  To quote Runar Bjarnson again, 
+>Instead of running I/O effects everywhere in our code, we build programs through the IO DSL, compose them like ordinary values, and then run them
+>with unsafePerformIO as part of our main.
+
+
+
+
+
 
 
 

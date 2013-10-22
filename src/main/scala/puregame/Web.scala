@@ -5,17 +5,37 @@ import org.eclipse.jetty.websocket.WebSocket
 import org.eclipse.jetty.websocket.WebSocketServlet
 import org.eclipse.jetty.websocket.WebSocket.Connection
 import org.eclipse.jetty.websocket.WebSocket.OnTextMessage
+import org.eclipse.jetty.server.Server
+import org.eclipse.jetty.servlet.ServletContextHandler
+import org.eclipse.jetty.servlet.ServletHolder
+import scalaz.effect._
 
-class WorldWebSocketServlet extends WebSocketServlet {
-  import puregame.AtomicSTMap._
+object WebHelper {
+  import puregame.Data._
 
-  val userSocketMap = AtomicSTMap[String, WorldWebSocket]()
-
-  protected override def doGet(request: HttpServletRequest, response: HttpServletResponse): Unit = {
+  def initServer(port: Int, incoming: (HttpServletRequest, String => IO[Unit]) => Unit): IO[Server] = {
+    val ws = new Server(port)
+    val context = new ServletContextHandler(ServletContextHandler.SESSIONS)
+    context.setContextPath("/")
+    ws.setHandler(context)
+    val servlet = new PuregameWebSocketServlet(incoming)
+    context.addServlet(new ServletHolder(servlet), "/*")
+    IO { ws }
   }
 
-  def doWebSocketConnect(req: HttpServletRequest, arg1: String): WorldWebSocket = {
-    val newsocket = new WorldWebSocket();
+}
+
+class PuregameWebSocketServlet(handleIncoming: (HttpServletRequest, String => IO[Unit]) => Unit) extends WebSocketServlet {
+  import puregame.AtomicSTMap._
+
+  val userSocketMap = AtomicSTMap[String, PuregameWebSocket]()
+
+  protected override def doGet(req: HttpServletRequest, response: HttpServletResponse): Unit = {
+    handleIncoming(req, updateWorld)
+  }
+
+  def doWebSocketConnect(req: HttpServletRequest, arg1: String): PuregameWebSocket = {
+    val newsocket = new PuregameWebSocket();
     userSocketMap.commit(add(req.getParameter("username"), newsocket))
     newsocket
   }
@@ -27,7 +47,7 @@ class WorldWebSocketServlet extends WebSocketServlet {
 
 }
 
-class WorldWebSocket extends OnTextMessage {
+class PuregameWebSocket extends OnTextMessage {
   private var connection: Option[Connection] = None;
 
   def send(s: String) = connection.foreach(_.sendMessage(s))

@@ -8,30 +8,38 @@ import Data._
 import AtomicSTRef._
 import scalaz.concurrent.Future
 import Scalaz._
+import scalaz.effect._
+import argonaut._, Argonaut._
+import javax.servlet.http._
 
 object PureGameMain {
-  import Scalaz._
-  def main(args: Array[String]): Unit = {
-    //todo: start up jetty/handle push JSON 
-  }
+  import puregame.Data._
+  import puregame.EncodeWorld._
 
-  def incoming(action: Action, world: AtomicSTRef[GameBoard], outgoing: GameBoard => Unit): Unit = {
-    val (s, f) = Engine.handleAction(action)
-    val io =
-      for {
-        (newWorld, _) <- world.commit(s)
-        _ = outgoing(newWorld)
-        _ = f.run //potential side effecting future
-      } yield ()
+  def main(args: Array[String]): Unit = {
+    val world = AtomicSTRef(GameBoard(Map[String, Player](), Map[Int, Boolean]()))
+    val io = for {
+      s <- WebHelper.initServer(8080, incoming(world))
+      _ = s.start()
+      _ <- putStr("Started Server...")
+    } yield ()
 
     io.unsafePerformIO
 
   }
 
-}
+  def getAction(req: HttpServletRequest): Action = ???
 
-trait Server {
-  def send(s: String): IO[Unit]
-  def incoming(f: String => Unit): IO[Unit]
+  def incoming(world: AtomicSTRef[GameBoard]) = (req: HttpServletRequest, outgoing: String => IO[Unit]) => {
+    val action = getAction(req)
+    val (s, f) = Engine.handleAction(action)
+    val io = for {
+      (newWorld, _) <- world.commit(s)
+      _ = f.run //potential side effecting future
+      _ <- outgoing(newWorld.asJson.toString)
+    } yield ()
+    io.unsafePerformIO
+  }
+
 }
 

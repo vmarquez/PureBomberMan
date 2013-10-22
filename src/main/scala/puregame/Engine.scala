@@ -11,8 +11,6 @@ import scalaz.concurrent.Future
 object Engine {
 
   import Scalaz._
-  def incrementPlayerWounds(players: List[Player]) =
-    Foldable[List].sequenceS_(players.map(p => woundStatsPlayerLens(p.name) := +1))
 
   def handleAction(action: Action, delay: Int = 4000): (StateT[Id, GameBoard, _], Future[Unit]) =
     action match {
@@ -40,6 +38,9 @@ object Engine {
         val state = handleBombExplodes(be.name, be.position)
         (state, Future {})
     }
+
+  def incrementPlayerWounds(players: List[Player]) =
+    Foldable[List].sequenceS_(players.map(p => woundStatsPlayerLens(p.name) := +1))
 
   def handleBombExplodes(p: String, position: Int): StateT[Id, GameBoard, Unit] =
     for {
