@@ -3,23 +3,25 @@
 
 ##A pure, functional, concurrent implementation of the game "Bomber Man"
 
-When I first started studying and dabbling in functional programming, I quickly understood how pure functions could help reusibility, reduce complexity, and ovearll
-be more pleasant to work with.  However, I did not immediately see how you could utilize functional progarmming in a state heavy, concurrent environment, and from
-what I've read on  various forums, message boards, and twitter, this lack of knowledge seems somewhat widespread.  I thought it might be helpful as both an excersie
-and for others to show that a very simple concurrent multiplayer game could be made pure and maintain it's concurrency *and* simplicity.  To understand the code,
-I'm going to assume fluency in scala and understanding of for comprehension.  Some passing familiarity with the funcitonal concepts such as monads and/or functional IO 
+When I first started dabbling in functional programming, I quickly understood how pure functions could help reusibility, reduce complexity, and ovearll
+be more pleasant to work with.  However, I did not immediately see how you could write a purely functional state heavy, concurrent application.  From
+what I've read on  various forums, message boards, and twitter, this lack of knowledge on the subject seems somewhat widespread among beginners of functional programming.
+I thought it might be helpful as both an excersie and for others to show that a very simple concurrent multiplayer game could be made pure and maintain it's concurrency *and* simplicity. 
+To understand the code, I'm going to assume fluency in scala and understanding the for comprehension syntactic sugar.  Some passing familiarity with the functional concepts such as monads and/or functional IO 
 woud be helpful too, but I'll link to some of my favorite blog posts on the subject .  
 
 So, what is a "pure" functional program?  I'll define it to mean a program containing only [Referentially Transparent](http://en.wikipedia.org/wiki/Referential_transparency_(computer_science)) 
-functions. But why would we want that?  Instead of trying to explain myself, I'll use the cannonical [Functional Programming in Scala](http://www.manning.com/bjarnason/)'s excellent explanation:
+functions. But why would we want a program consisting solely of Referentially Transparent functions?  Instead of trying to explain the answer myself, I'll use the cannonical [Functional Programming in Scala](http://www.manning.com/bjarnason/)'s excellent explanation:
+
 >[Referential Transparency] enables a very simple and natural mode of reasoning about program evaluation, called the substitution model. When expressions are referentially transparent, we can imagine that
 >computation proceeds very much like we would solve an algebraic equation. We fully expand every part of an expression, replacing all variables with their referents, and then reduce 
 >it to its simplest form. At each step we replace a term with an equivalent one; we say that computation proceeds by substituting equals for equals. In other words, RT enables 
 >equational reasoning about programs.
 
+To remain purely functional, it was helpful to focus on three different challenges.  The first is how we 'change' data (our program state) without modifying variables, etc.
+The second challenge was dealing with concurrency in a functional way, and finally, performing IO so we can interact with the real world in a pure way. 
 
-
-First things first, we should define our 'entities', the data we'll be working with. 
+To start, we need to define our 'entities', the data the entire program will be working with. 
 
 ```scala
 case class PlayerStats(bombsThrown: Int, wounds: Int, playersHit: Int)
@@ -34,24 +36,24 @@ case class GameBoard(players: Map[String, Player], bombs: Map[Int, Boolean])
 
 Nothing surprising here, we have a player, a group of player statistics, and a way to represent all of the active players along with
 where there are currently bombs.  This will represent the world view of the game.  Because we're using immutable data, we need a way to 
-update the state of the world. 
+update the state of the world without mutation. 
 
 ##Lenses
 
-Scala gives us free 'copy' methods for each case class, but we'd end up needing to do a lot of this
+Scala gives us free 'copy' methods for each case class, but we'd end up needing to do a lot of this:
 ```scala
 gameBoard.copy(players = gameBoard.players.updated("playername", 
     gameboard.players(""playername").copy(stats = player.playerStats.copy(wounds = player.playerStats.wounds + 1))))
 ```
 
-which is soul crushing to write.  Instead we'll use something called a Lens.  These are in ScalaZ (and there are a few other libraries), but 
+which is just soul crushing to write.  Instead we'll use something called a Lens.  These are in ScalaZ (and there are a few other libraries), but 
 for simplicities' sake I'll actually write my own implementation.  First, a lens is simply a datastructure consisting of a "getter" and "setter".
 
 ```scala
 case class VLens[A, B](set: (A, B) => A, get: A => B)
 ```
 
-And we'll need to create instances for each field we want to update in our PlayerStats entity.  Our bomb lens takes a PlayerStats instance, an Int, and returns a new PlayerStats
+And we'll need to create instances for each field we want to update in our PlayerStats entity.  Our "bomb lens", for example,  takes a PlayerStats instance, an Int, and returns a new PlayerStats
 instance.   
 ```scala
 val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
@@ -63,7 +65,7 @@ We also need a way to set the PlayerStats entity *on* the Player entity, so
 ```scala    
 val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(stats = ns), _.stats)
 ```
-So how do we combine them? We'll expand on our Lens implementation:
+So how do we combine a Lens[PlayerStats,=>Int] so we can get a Lens[Player, Int](Int representing our individual field) ? We'll expand on our Lens implementation:
 ```scala
 case class VLens[a, b](set: (a, b) => a, get: a => b) {
     def andthen[c](otherlens: VLens[b, c]): VLens[a, c] = {
@@ -74,7 +76,7 @@ case class VLens[a, b](set: (a, b) => a, get: a => b) {
 }
 ```
 
-Now we can compose our two lenses to create a Lens so we can pass in an A (Player, in our case), and a C (an Int, for bombLens as an example), and return a new player. 
+Now we can compose our 'stats' lenses with our PlayerLens to create additional Lenses. 
 
 ```scala
 val woundStatsLens = statsLens.andThen(woundLens) //Gives us a VLens[Player, Int]
@@ -82,7 +84,7 @@ val hitStatsLens = statsLens.andThen(hitLens)
 val bombStatsLens = statsLens.andThen(bombLens)
 ```
 
-Ok, we're making progress, but now how do we set a player (and subsequently, and of its relevant lenses) on a GameBoard? There are a few different ways, but I think it's
+Ok, we're making progress, but now how do we set a player (and subsequently, and of its relevant lenses) on a GameBoard? There are a few different fancy ways, but I think it's
 simple and effective enough to use a function that takes a 'player' and returns a Lens.  Then we can continue composing our lenses
 
 ```scala
@@ -108,7 +110,7 @@ Now that we have our entities, along with ways to 'modify' them in a functional 
 
 Again, very straight forward stuff.  Reacting to actions such as Joining, Moving, and placing a bomb is just going to be calling into our lenses with the world state
 and the values passed in from the Action we received.  We need a bit more logic to determine our 'blast radious' for when a bomb finally explodes, so I just came up with something quick.  Note there is nothing 'special' 
-about our game logic here, other than the fact that these are side effect free functions. 
+about our game logic here, other than the fact that these are side effect free (Referentially Transparent) functions. 
 
 ```scala
   def getHitPlayers(p: Int, board: GameBoard): List[Player] = {
@@ -178,8 +180,8 @@ pretty awful and most likely error prone.
 First, let's talk a bit about some magic called the State Monad.
 Instead of going on about Mexican food or Astronauts, I'll just show the code, implore you to read it over a *lot*, (if you are unfamiliar), and
 then send you off to the [tutorial that helped me understand it](http://blog.tmorris.net/posts/the-state-monad-for-scala-users/index.html).  Coming from an imperative 
-background, I did have to spend some time thinking about it, and even typing out the example in the post to play with.  This is also excellently covered in 
-chapter six of Functional Programming in Scala.
+background, I did have to spend some time thinking about the example, and even typing it and play with it.  The State Monad is also excellently covered in 
+chapter six of Functional Programming in Scala.  
 
 ```scala
     case class State[A,B](run: A=>(A,B)) {
@@ -235,6 +237,8 @@ And because of scala's for comprehension, along wtih the fact that the State Mon
     // which in our case is equivalent to State[GambeBoard, Unit]
 ```
 
+##Concurrency
+
 Since in the code I'm using ScalaZ's State monad, we actually end up getting a more flexible and powerful version of the State Monad (IndexedStateT), but
 for our purposes it works exactly like the one I described.  Once we have a State Monad that describes how we're updating the GameBoard, we need a way to
 execute it.  We'll create a structure that holds an internal AtomicReference[A], and has a method called 'commit' which will handle 'running' a State[A,_] we 
@@ -257,6 +261,11 @@ sealed trait AtomicSTRef[A] {
 
 }
 ```
+So what's going on here?  We're using the State Monad in combination with an AtomicReference to ensure a *batch* of State changes to the GameBoard can run 
+unimpeded by another thread.  If another thread modifies the AtomicReference by calling commit with a batch of changes while the original thread is running, 
+it simply retries the *same* State changes to a new version of the GameBoard.  We now have transacitonal semantics for State changes!  
+
+
 
 You may notice that commit returns IO, which isn't something I've explaiend yet...
 
