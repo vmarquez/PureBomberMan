@@ -261,7 +261,7 @@ sealed trait AtomicSTRef[A] {
 
 }
 ```
-So what's going on here?  We're using the State Monad in combination with an AtomicReference to ensure a *batch* of State changes to the GameBoard can run 
+We're using the State Monad in combination with an AtomicReference to ensure a *batch* of State changes to the GameBoard can run 
 unimpeded by another thread.  If another thread modifies the AtomicReference by calling commit with a batch of changes while the original thread is running, 
 it simply retries the *same* State changes to a new version of the GameBoard.  We now have transacitonal semantics for State changes!  
 

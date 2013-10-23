@@ -28,17 +28,30 @@ object PureGameMain {
 
   }
 
-  def getAction(req: HttpServletRequest): Action = ???
+  def getAction(req: HttpServletRequest): OptionT[IO, Action] = OptionT[IO, Action](IO {
+    //val in = getClass.getResourceAsStream("rootPage")
+    for {
+      name <- Option(req.getParameter("name"))
+      action <- Option(req.getParameter("action")) if (action == "join" || action == "move" || action == "bomb")
+      posStr <- Option(req.getParameter("position"))
+      position = Integer.parseInt(posStr)
+    } yield action match {
+      case "join" => Join(name, "")
+      case "move" => Move(name, position)
+      case "bomb" => BombPlaced(name, position)
+    }
+  })
 
   def incoming(world: AtomicSTRef[GameBoard]) = (req: HttpServletRequest, outgoing: String => IO[Unit]) => {
-    val action = getAction(req)
-    val (s, f) = Engine.handleAction(action)
     val io = for {
-      (newWorld, _) <- world.commit(s)
+      action <- getAction(req)
+      (s, f) = Engine.handleAction(action)
+      (newWorld, _) <- world.commit(s).liftM[OptionT]
       _ = f.run //potential side effecting future
-      _ <- outgoing(newWorld.asJson.toString)
+      _ <- outgoing(newWorld.asJson.toString).liftM[OptionT]
     } yield ()
-    io.unsafePerformIO
+    io.run.unsafePerformIO
+    ()
   }
 
 }
