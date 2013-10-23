@@ -271,7 +271,7 @@ You may notice that commit returns IO, which isn't something I've explaiend yet.
 
 ##IO
 
-IO is another crucial monad that lets us maintain Referntial Transparency while interacting with the outside world.  To quote Runar Bjarnson again, 
+IO is another crucial monad that lets us maintain Referntial Transparency while interacting with the outside world.  To quote Runar Bjarnason again, 
 >Instead of running I/O effects everywhere in our code, we build programs through the IO DSL, compose them like ordinary values, and then run them
 >with unsafePerformIO as part of our main.
 
