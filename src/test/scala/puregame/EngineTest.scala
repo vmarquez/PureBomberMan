@@ -33,12 +33,10 @@ object ScalaCheckDemo extends Properties("puregameTest") {
 
   property("bombExplodes") = forAll { (i: Int) =>
     (i >= 0 && i < 100) ==> {
-      //val gb = gameboardGen.sample
-      //val bombthrower =  oneOf(gb.Players.map(kv => k._1)).get //YOLO?
       val res = for {
         gb <- gameboardGen.sample
         bombthrower <- oneOf(gb.players.map(kv => kv._1).toList).sample
-        newWorld = Engine.handleAction(BombExplodes(bombthrower, i))._1.run(gb)._1
+        newWorld = Engine.handleBombExplodes(bombthrower, i).run(gb)._1
       } yield {
         val totalWounds = newWorld.players.map(_._2.stats.wounds).foldLeft(0)(_ + _)
         val hits = newWorld.players(bombthrower).stats.playersHit

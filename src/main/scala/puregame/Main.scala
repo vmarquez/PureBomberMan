@@ -15,6 +15,7 @@ import javax.servlet.http._
 object PureGameMain {
   import puregame.Data._
   import puregame.EncodeWorld._
+  import scalaz.syntax.FoldableSyntax
 
   def main(args: Array[String]): Unit = {
     val world = AtomicSTRef(GameBoard(Map[String, Player](), Map[Int, Boolean]()))
@@ -28,7 +29,7 @@ object PureGameMain {
 
   }
 
-  def getAction(req: HttpServletRequest): OptionT[IO, Action] = OptionT[IO, Action](IO {
+  def getAction(req: HttpServletRequest) =
     //val in = getClass.getResourceAsStream("rootPage")
     for {
       name <- Option(req.getParameter("name"))
@@ -40,19 +41,19 @@ object PureGameMain {
       case "move" => Move(name, position)
       case "bomb" => BombPlaced(name, position)
     }
-  })
 
   def incoming(world: AtomicSTRef[GameBoard]) = (req: HttpServletRequest, outgoing: String => IO[Unit]) => {
     val io = for {
-      action <- getAction(req)
-      (s, f) = Engine.handleAction(action)
-      (newWorld, _) <- world.commit(s).liftM[OptionT]
-      _ = f.run //potential side effecting future
+      action <- (OptionT(IO { getAction(req) })) //this isn't performing IO, but we want a transformer for readability
+      (s1, f) = Engine.handleAction(action)
+      (newWorld, _) <- world.commit(s1).liftM[OptionT]
       _ <- outgoing(newWorld.asJson.toString).liftM[OptionT]
+      s2 = f.run //this is  potentially side effecting (blocking) 
+      (nWorld2, _) <- OptionT(Traverse[Option].sequence(s2.map(s => world.commit(s))))
+      _ <- outgoing(nWorld2.asJson.toString).liftM[OptionT] //send our update first//
     } yield ()
-    io.run.unsafePerformIO
+    io.run.unsafePerformIO //this is effectlively the end of the owrld for us.  It just happens on every incoming connection/request
     ()
   }
-
 }
 

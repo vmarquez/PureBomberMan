@@ -2,9 +2,7 @@ package puregame
 
 import scalaz._
 import Scalaz._
-import scala.concurrent.Future
-import scalaz.effect.IO
-import scalaz.Lens
+//import scalaz.Lens
 
 object Data {
 
@@ -18,7 +16,6 @@ object Data {
   case class Join(name: String, callback: String) extends Action
   case class Move(name: String, position: Int) extends Action
   case class BombPlaced(name: String, position: Int) extends Action //name is the user who placed it
-  case class BombExplodes(name: String, position: Int) extends Action //name is the user who placed it
 
   //Player lens
   val positionLens = VLens.lensu[Player, Int]((player, np) => player.copy(position = np), _.position) //for those unfamiliar with scala, "_.position" is lambda shorthand for "player=>player.position"

@@ -12,7 +12,7 @@ object Engine {
 
   import Scalaz._
 
-  def handleAction(action: Action, delay: Int = 4000): (StateT[Id, GameBoard, _], Future[Unit]) =
+  def handleAction(action: Action, delay: Int = 4000): (StateT[Id, GameBoard, _], Future[Option[StateT[Id, GameBoard, _]]]) =
     action match {
       case j: Join =>
         val state =
@@ -21,22 +21,24 @@ object Engine {
             newPlayer = Player(j.name, j.callback, 0, PlayerStats(0, 0, 0)) //in the State Monad, generate a new version of the world with the new player
             _ <- AtomicSTRef.update(board.copy(players = board.players.updated(j.name, newPlayer))) //replace the old version iwth the new version
           } yield ()
-        (state, Future {})
+        (state, Future { None }) //None.liftM[OptionT[Future, StateT[Id, GameBoard, _]]])
 
       case m: Move =>
         val state = positionPlayerLens(m.name) := m.position //:= returns a state which fits in with our 
-        (state, Future {})
+        (state, Future { None })
 
       case bp: BombPlaced =>
-        val state = markBomb(bp.position, true)
+        println("bombPlaced")
+        val state =
+          for {
+            _ <- markBomb(bp.position, true)
+            _ <- bombStatsPlayerLens(bp.name) := +1
+          } yield ()
         (state, Future {
           Thread.sleep(delay) //bomb is ticking down...
-          handleAction(BombExplodes(bp.name, bp.position))
+          println("now we're going to handle the bomb explosoin")
+          Some(handleBombExplodes(bp.name, bp.position))
         })
-
-      case be: BombExplodes =>
-        val state = handleBombExplodes(be.name, be.position)
-        (state, Future {})
     }
 
   def incrementPlayerWounds(players: List[Player]) =
