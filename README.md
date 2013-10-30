@@ -18,10 +18,15 @@ functions. But why would we want a program consisting solely of Referentially Tr
 >it to its simplest form. At each step we replace a term with an equivalent one; we say that computation proceeds by substituting equals for equals. In other words, RT enables 
 >equational reasoning about programs.
 
-To remain purely functional, it was helpful to focus on three different challenges.  The first is how we 'change' data (our program state) without modifying variables, etc.
-The second challenge was dealing with concurrency in a functional way, and finally, performing IO so we can interact with the real world in a pure way. 
+Now that the benefits of 'pure' functional programming are clear, how do we get there and apply it to our implementation of Bomber Man?  The game will consist of multiple players using a client (in our case, a browser)
+sending actions to the server, and receiving push messages whenever the state of the world has changed.  Coming from an imperative background, I ran into more or less three main 'challenges' trying to design
+a state heavy concurrent app in a referentially transapernt way.  First, I had to deal with manipulating data in a functional way.  Second, there was the issue of concurrency, which 
+ends up being a bit different than the usual locks or non-referentially transparent "actor" model.  Finally, there was the issue of IO.  Since this is a game, we need a way to capture
+effects from the outside world in a pure way. 
 
-To start, we need to define our 'entities', the data the entire program will be working with. 
+
+##Problem:  Manipulating data in a functional way: 
+Imperitive or functional, we still neeed some sort of 'entities' to model the data we'll be working with: 
 
 ```scala
 case class PlayerStats(bombsThrown: Int, wounds: Int, playersHit: Int)
@@ -35,19 +40,21 @@ case class GameBoard(players: Map[String, Player], bombs: Map[Int, Boolean])
 ```
 
 Nothing surprising here, we have a player, a group of player statistics, and a way to represent all of the active players along with
-where there are currently bombs.  This will represent the world view of the game.  Because we're using immutable data, we need a way to 
-update the state of the world without mutation. 
+where there are currently bombs.  This will represent the world view of the game.  However, what we don't want is to be able to 'change' the value of one of our entities by setting a value. 
+We need a functional way to update data in a non-destructive manner, and so we'll model everything with scala's case classes, which cause the fields to be immutable.
 
-##Lenses
-
-Scala gives us free 'copy' methods for each case class, but we'd end up needing to do a lot of this:
+The Scala compiler will auto generate 'copy' methods for each case class, but we'd end up needing to do a lot of this:
 ```scala
 gameBoard.copy(players = gameBoard.players.updated("playername", 
     gameboard.players(""playername").copy(stats = player.playerStats.copy(wounds = player.playerStats.wounds + 1))))
 ```
+which, while functional, is just soul crushing to write, even with a very tiny web app such as Bomber Man. 
 
-which is just soul crushing to write.  Instead we'll use something called a Lens.  These are in ScalaZ (and there are a few other libraries), but 
-for simplicities' sake I'll actually write my own implementation.  First, a lens is simply a datastructure consisting of a "getter" and "setter".
+
+##Solution: Lenses
+
+Instead we'll use something called a Lens.  There is an implementation in ScalaZ (and there are a few other libraries), but 
+for the sake of explaining why Lenses are nifty, I'll actually write my own implementation.  Primarily, a lens is simply a datastructure consisting of a "getter" and "setter".
 
 ```scala
 case class VLens[A, B](set: (A, B) => A, get: A => B)
@@ -61,7 +68,8 @@ val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombs
 val woundLens = VLens.lensu[PlayerStats, Int]((stats, nw) => stats.copy(wounds = nw), _.wounds)
 val hitLens = VLens.lensu[PlayerStats, Int]((stats, nh) => stats.copy(playersHit = nh), _.playersHit)
 ```
-We also need a way to set the PlayerStats entity *on* the Player entity, so 
+Hrm, doesn't look much nicer than the 'copy' method, but soon you'll see why they're useful.  Just like the 'copy' example, we need a way to set data on subobjects, in our case, setting  the PlayerStats entity 
+*on* the Player entity:
 ```scala    
 val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(stats = ns), _.stats)
 ```
@@ -76,7 +84,7 @@ case class VLens[a, b](set: (a, b) => a, get: a => b) {
 }
 ```
 
-Now we can compose our 'stats' lenses with our PlayerLens to create additional Lenses. 
+Now we can compose our 'stats' lenses with our PlayerLens to create additional Lenses! 
 
 ```scala
 val woundStatsLens = statsLens.andThen(woundLens) //Gives us a VLens[Player, Int]
@@ -85,7 +93,7 @@ val bombStatsLens = statsLens.andThen(bombLens)
 ```
 
 Ok, we're making progress, but now how do we set a player (and subsequently, and of its relevant lenses) on a GameBoard? There are a few different fancy ways, but I think it's
-simple and effective enough to use a function that takes a 'player' and returns a Lens.  Then we can continue composing our lenses
+simple and effective enough to use a function that takes a 'player' and returns a Lens.  Then we can continue composing our lenses:
 
 ```scala
                   //k here is the player name, how we pull out the player from our GameBoard structure
@@ -94,7 +102,6 @@ val bombStatsPlayerLens = (k: String) => (playerLens(k).andThen(bombStatsLens))
 ```
 and so on for the rest of the stats and player fields. 
 
-##Actions
 
 Now that we have our entities, along with ways to 'modify' them in a functional way,  let's come up with various actions a player can take:
 
@@ -149,8 +156,12 @@ We could code the 'move' action handler to look like the following
 ```scala
     case m: Move=> world = positionPlayerLens(m.name).set(world, m.position)
 ```
-Which is fairly similar to how we're actually doing it, excep there's a problem.  Our game is concurrent. What happens if the world variable representing our Game State was
-updated by another thread between reading it and modifing it?  We may have just wiped out someone else's changes, or vice versa.  Let's eliminate our global 'var' by replacing
+Which is fairly similar to how we're actually doing it, excep there's a problem.
+
+
+#Problem: Concurrency 
+Our game is concurrent. What happens if the world variable representing our Game State was updated by another thread between reading it 
+and modifing it?  We may have just wiped out someone else's changes, or vice versa.  Let's eliminate our global 'var' by replacing
 it with the indominatable java.util.atomic.AtomicReference.  
 
 ```scala
@@ -176,12 +187,12 @@ What we need is transactional semantics for a set of actions.  We could try and 
 pretty awful and most likely error prone. 
 
 
-##State Monad
+##Solution: State Monad (and some other nifty methods)
 First, let's talk a bit about some magic called the State Monad.
-Instead of going on about Mexican food or Astronauts, I'll just show the code, implore you to read it over a *lot*, (if you are unfamiliar), and
-then send you off to the [tutorial that helped me understand it](http://blog.tmorris.net/posts/the-state-monad-for-scala-users/index.html).  Coming from an imperative 
-background, I did have to spend some time thinking about the example, and even typing it and play with it.  The State Monad is also excellently covered in 
-chapter six of Functional Programming in Scala.  
+Instead of going on about Mexican food or Astronauts, I'll just show the code to a simplistic verison of the State monad, implore you to read it over a *lot*, (if you are unfamiliar).  Then,(or before)
+go check out the [tutorial that helped me understand it](http://blog.tmorris.net/posts/the-state-monad-for-scala-users/index.html).  Coming from an imperative 
+background, I did have to spend some time thinking about the example, and even typing out the tree example in the REPL to mess with.  The State Monad is also excellently covered in 
+chapter six of the aforementioned Functional Programming in Scala.  
 
 ```scala
     case class State[A,B](run: A=>(A,B)) {
@@ -201,9 +212,8 @@ chapter six of Functional Programming in Scala.
 ```
 
 
-So, why is the State Monad so powerful?   Because it allows us to compose multiple state changes into a single state transition.  There
-are plenty of ways to compsose functions or actions, but State has the additional benefit of the fact that you can get a State from a Lens.
-
+So how does the State monad help us here?  Because it allows us to compose multiple state changes into a single state transition.  There
+are other ways to compsose functions or actions, but State has the additional benefit of the fact that you can get a State from a Lens.
 
 We'll add one more method to our Lens implemenation along wtih an alias.  ScalaZ and most Lens impelmenations will have a way to get a State monad. 
 
@@ -237,8 +247,6 @@ And because of scala's for comprehension, along wtih the fact that the State Mon
     // which in our case is equivalent to State[GambeBoard, Unit]
 ```
 
-##Concurrency
-
 Since in the code I'm using ScalaZ's State monad, we actually end up getting a more flexible and powerful version of the State Monad (IndexedStateT), but
 for our purposes it works exactly like the one I described.  Once we have a State Monad that describes how we're updating the GameBoard, we need a way to
 execute it.  We'll create a structure that holds an internal AtomicReference[A], and has a method called 'commit' which will handle 'running' a State[A,_] we 
@@ -267,9 +275,9 @@ it simply retries the *same* State changes to a new version of the GameBoard.  W
 
 
 
-You may notice that commit returns IO, which isn't something I've explaiend yet...
+You may notice that commit returns IO, but we're onto that section now:
 
-##IO
+##Problem: if IO can happen arbitrarily, it will break Referential Transparency 
 
 IO is another crucial monad that lets us maintain Referntial Transparency while interacting with the outside world.  To quote Runar Bjarnason again, 
 >Instead of running I/O effects everywhere in our code, we build programs through the IO DSL, compose them like ordinary values, and then run them
