@@ -1,13 +1,13 @@
 #Puregame
 
 
-##A pure, functional, concurrent implementation of the game "Bomber Man"
+##A pure, functional, concurrent implementation of the game “Bomberman”
 
 When I first started dabbling in functional programming, I quickly understood how pure functions could help reusibility, reduce complexity, and ovearll
 be more pleasant to work with.  However, I did not immediately see how you could write a purely functional state heavy, concurrent application.  From
 what I've read on  various forums, message boards, and twitter, this lack of knowledge on the subject seems somewhat widespread among beginners of functional programming.
 I thought it might be helpful as both an excersie and for others to show that a very simple concurrent multiplayer game could be made pure and maintain it's concurrency *and* simplicity. 
-To understand the code, I'm going to assume fluency in scala and understanding the for comprehension syntactic sugar.  Some passing familiarity with the functional concepts such as monads and/or functional IO 
+To understand the code, I'm going to assume fluency in Scala and understanding the for comprehension syntactic sugar.  Some passing familiarity with the functional concepts such as monads and/or functional IO 
 woud be helpful too, but I'll link to some of my favorite blog posts on the subject .  
 
 So, what is a "pure" functional program?  I'll define it to mean a program containing only [Referentially Transparent](http://en.wikipedia.org/wiki/Referential_transparency_(computer_science)) 
@@ -41,7 +41,7 @@ case class GameBoard(players: Map[String, Player], bombs: Map[Int, Boolean])
 
 Nothing surprising here, we have a player, a group of player statistics, and a way to represent all of the active players along with
 where there are currently bombs.  This will represent the world view of the game.  However, what we don't want is to be able to 'change' the value of one of our entities by setting a value. 
-We need a functional way to update data in a non-destructive manner, and so we'll model everything with scala's case classes, which cause the fields to be immutable.
+We need a functional way to update data in a non-destructive manner, and so we'll model everything with Scala's case classes, which cause the fields to be immutable.
 
 The Scala compiler will auto generate 'copy' methods for each case class, but we'd end up needing to do a lot of this:
 ```scala
@@ -64,7 +64,6 @@ And we'll need to create instances for each field we want to update in our Playe
 instance.   
 ```scala
 val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
-val bombLens = VLens.lensu[PlayerStats, Int]((stats, thrown) => stats.copy(bombsThrown = thrown), _.bombsThrown)
 val woundLens = VLens.lensu[PlayerStats, Int]((stats, nw) => stats.copy(wounds = nw), _.wounds)
 val hitLens = VLens.lensu[PlayerStats, Int]((stats, nh) => stats.copy(playersHit = nh), _.playersHit)
 ```
@@ -73,7 +72,7 @@ Hrm, doesn't look much nicer than the 'copy' method, but soon you'll see why the
 ```scala    
 val statsLens = VLens.lensu[Player, PlayerStats]((player, ns) => player.copy(stats = ns), _.stats)
 ```
-So how do we combine a Lens[PlayerStats,=>Int] so we can get a Lens[Player, Int](Int representing our individual field) ? We'll expand on our Lens implementation:
+So how do we combine a `Lens[PlayerStats,=>Int]` so we can get a `Lens[Player, Int]` (`Int` representing our individual field)? We'll expand on our `Lens` implementation:
 ```scala
 case class VLens[a, b](set: (a, b) => a, get: a => b) {
     def andthen[c](otherlens: VLens[b, c]): VLens[a, c] = {
@@ -156,7 +155,7 @@ We could code the 'move' action handler to look like the following
 ```scala
     case m: Move=> world = positionPlayerLens(m.name).set(world, m.position)
 ```
-Which is fairly similar to how we're actually doing it, excep there's a problem.
+Which is fairly similar to how we're actually doing it, except there's a problem.
 
 
 #Problem: Concurrency 
@@ -189,7 +188,7 @@ pretty awful and most likely error prone.
 
 ##Solution: State Monad (and some other nifty methods)
 First, let's talk a bit about some magic called the State Monad.
-Instead of going on about Mexican food or Astronauts, I'll just show the code to a simplistic verison of the State monad, implore you to read it over a *lot*, (if you are unfamiliar).  Then,(or before)
+Instead of going on about Mexican food or Astronauts, I'll just show the code to a simplistic verison of the State monad, implore you to read it over a *lot*, (if you are unfamiliar).  Then (or before),
 go check out the [tutorial that helped me understand it](http://blog.tmorris.net/posts/the-state-monad-for-scala-users/index.html).  Coming from an imperative 
 background, I did have to spend some time thinking about the example, and even typing out the tree example in the REPL to mess with.  The State Monad is also excellently covered in 
 chapter six of the aforementioned Functional Programming in Scala.  
@@ -213,9 +212,9 @@ chapter six of the aforementioned Functional Programming in Scala.
 
 
 So how does the State monad help us here?  Because it allows us to compose multiple state changes into a single state transition.  There
-are other ways to compsose functions or actions, but State has the additional benefit of the fact that you can get a State from a Lens.
+are other ways to compose functions or actions, but State has the additional benefit of the fact that you can get a State from a Lens.
 
-We'll add one more method to our Lens implemenation along wtih an alias.  ScalaZ and most Lens impelmenations will have a way to get a State monad. 
+We'll add one more method to our Lens implementation along with an alias.  ScalaZ and most Lens implementations will have a way to get a State monad. 
 
 ```scala
 case class VLens[a, b](set: (a, b) => a, get: a => b) {
@@ -235,7 +234,7 @@ case class VLens[a, b](set: (a, b) => a, get: a => b) {
 
 ```
 
-And because of scala's for comprehension, along wtih the fact that the State Monad has flatMap and Map, we now we can do nifty things like:
+And because of Scala's for comprehension, along with the fact that the State Monad has flatMap and Map, we now we can do nifty things like:
 ```scala
     val s = 
     for {
